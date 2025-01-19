@@ -300,16 +300,16 @@ spec:
 Aby stack działał prawidłowo, host Windows 10 i minikube działający W Docker za pomocą WSL, najpierw przygowowane plik nalerzy zgrać do odpowiedniego folderu w konteneże minikube. Można to zrobić za pomocą SSH (minikube ssh) lub używając SSH File Transfer lub wielu innych jak edytowanie za pomocą VS Code bezpośrenio w kontenerze za pomocą tunelu ssh. W przypdaku maszyn z linuxem ten krok 
 prawdopodobnie nie będzie potrzebny.
 
-![copy data to minikube kontainer](save data to minikube.JPG)
+![copy data to minikube kontainer](save_data_to_minikube.JPG)
 
-![Insert data via vi edito](process of saving file into minikube.JPG) 
+![Insert data via vi edito](process_of_saving.jpg) 
 
 Aby Ingress działał poprawnie w minikube nalerzało włączyć plugin `ingress` addon using comman `minikube addons enable ingress`.
 
 
 Wyniki działania stacku przeddstawia przeglądarka
 
-![Working stack in web browser](working stack in webbrowser.JPG)
+![Working stack in web browser](working_stack_in_webbrowser.JPG)
 
 Dane z PersistanceVolume są dostępne w appache ponieważ widzimy stronę której kod to
 
