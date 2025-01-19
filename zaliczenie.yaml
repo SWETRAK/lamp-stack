@@ -1,0 +1,216 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lamp-stack
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+  namespace: lamp-stack
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: cm9vdHBhc3N3b3Jk    # Base64-encoded 'rootpassword'
+  MYSQL_PASSWORD: bXlzcWxwYXNzd29yZA==     # Base64-encoded 'mysqlpassword'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apache-php-config
+  namespace: lamp-stack
+data:
+  MYSQL_DATABASE: exampledb
+  MYSQL_USER: mysqluser
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: php-code-pv
+  namespace: lamp-stack
+spec:
+  storageClassName: default
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /home/docker/php-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: php-code-pvc
+  namespace: lamp-stack
+spec:
+  storageClassName: default
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: lamp-stack
+spec:
+  serviceName: "mysql"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: apache-php-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: apache-php-config
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: lamp-stack
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apache-php
+  namespace: lamp-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: apache-php
+  template:
+    metadata:
+      labels:
+        app: apache-php
+    spec:
+      containers:
+      - name: apache-php
+        image: php:7.4-apache
+        command: ["/bin/sh"]
+        args: ["-c", "docker-php-ext-install mysqli && docker-php-ext-enable mysqli && apache2-foreground"]
+        env:
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: apache-php-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: apache-php-config
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: app-code
+          mountPath: /var/www/html
+      volumes:
+      - name: app-code
+        persistentVolumeClaim:
+          claimName: php-code-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apache-php
+  namespace: lamp-stack
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: apache-php
+  type: NodePort
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apache-to-mysql
+  namespace: lamp-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: apache-php
+    ports:
+    - protocol: TCP
+      port: 3306
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lamp-ingress
+  namespace: lamp-stack
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: apache-php
+            port:
+              number: 80
+---
